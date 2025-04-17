@@ -9,13 +9,16 @@
 	import FiltersSelector from '$lib/components/workspace/Models/FiltersSelector.svelte';
 	import ActionsSelector from '$lib/components/workspace/Models/ActionsSelector.svelte';
 	import Capabilities from '$lib/components/workspace/Models/Capabilities.svelte';
-	import Textarea from '$lib/components/common/Textarea.svelte';
+	import Textarea from '$lib/components/common/Textarea.svelte'; // Assuming this component handles its own styling and rows
 	import { getTools } from '$lib/apis/tools';
 	import { getFunctions } from '$lib/apis/functions';
 	import { getKnowledgeBases } from '$lib/apis/knowledge';
 	import AccessControl from '../common/AccessControl.svelte';
 	import { stringify } from 'postcss';
 	import { toast } from 'svelte-sonner';
+	// Removed incorrect Input import
+	import Plus from '$lib/components/icons/Plus.svelte'; // Added import
+	import GarbageBin from '$lib/components/icons/GarbageBin.svelte'; // Added import
 
 	const i18n = getContext('i18n');
 
@@ -68,6 +71,7 @@
 		},
 		params: {
 			system: ''
+			// custom_roles will be added dynamically if needed
 		}
 	};
 
@@ -86,6 +90,30 @@
 	let actionIds = [];
 
 	let accessControl = {};
+
+	// Added customRoles state variable
+	let customRoles = [];
+
+	// Added initialization logic for customRoles
+	// Initialize customRoles and ensure params exist
+	$: {
+		if (info && info.params) {
+			// Ensure custom_roles exists
+			if (!info.params.custom_roles) {
+				info.params.custom_roles = [];
+			}
+			// Use the array from info.params directly
+			customRoles = info.params.custom_roles;
+		} else if (info && !info.params) {
+			// Initialize params if it doesn't exist
+			info.params = { system: '', custom_roles: [] }; // Initialize system prompt as well
+			customRoles = info.params.custom_roles;
+		} else {
+			// Fallback if info is null/undefined initially
+			customRoles = [];
+		}
+	}
+
 
 	const addUsage = (base_model_id) => {
 		const baseModel = $models.find((m) => m.id === base_model_id);
@@ -108,17 +136,23 @@
 
 		if (id === '') {
 			toast.error('Model ID is required.');
+			loading = false; // Stop if validation fails
+			return;
 		}
 
 		if (name === '') {
 			toast.error('Model Name is required.');
+			loading = false; // Stop if validation fails
+			return;
 		}
 
+		// Ensure meta exists before assigning properties
+        if (!info.meta) info.meta = {};
 		info.access_control = accessControl;
 		info.meta.capabilities = capabilities;
 
 		if (enableDescription) {
-			info.meta.description = info.meta.description.trim() === '' ? null : info.meta.description;
+			info.meta.description = info.meta.description?.trim() === '' ? null : info.meta.description;
 		} else {
 			info.meta.description = null;
 		}
@@ -126,7 +160,7 @@
 		if (knowledge.length > 0) {
 			info.meta.knowledge = knowledge;
 		} else {
-			if (info.meta.knowledge) {
+			if (info.meta?.knowledge) { // Check meta exists
 				delete info.meta.knowledge;
 			}
 		}
@@ -134,7 +168,7 @@
 		if (toolIds.length > 0) {
 			info.meta.toolIds = toolIds;
 		} else {
-			if (info.meta.toolIds) {
+			if (info.meta?.toolIds) { // Check meta exists
 				delete info.meta.toolIds;
 			}
 		}
@@ -142,7 +176,7 @@
 		if (filterIds.length > 0) {
 			info.meta.filterIds = filterIds;
 		} else {
-			if (info.meta.filterIds) {
+			if (info.meta?.filterIds) { // Check meta exists
 				delete info.meta.filterIds;
 			}
 		}
@@ -150,23 +184,74 @@
 		if (actionIds.length > 0) {
 			info.meta.actionIds = actionIds;
 		} else {
-			if (info.meta.actionIds) {
+			if (info.meta?.actionIds) { // Check meta exists
 				delete info.meta.actionIds;
 			}
 		}
 
+		// Ensure params exists before accessing stop
+		if (!info.params) info.params = {};
 		info.params.stop = params.stop ? params.stop.split(',').filter((s) => s.trim()) : null;
-		Object.keys(info.params).forEach((key) => {
-			if (info.params[key] === '' || info.params[key] === null) {
-				delete info.params[key];
-			}
-		});
 
-		await onSubmit(info);
+		// Process custom roles before finalizing params (Added Block)
+		if (info.params.custom_roles) {
+			info.params.custom_roles = info.params.custom_roles.filter(
+				(role) => role.role.trim() !== '' || role.value.trim() !== ''
+			);
+		  // If after filtering the array is empty, delete the key
+		  if (info.params.custom_roles.length === 0) {
+			delete info.params.custom_roles;
+		  }
+		}
+		// End of Added Block for custom roles processing
 
-		loading = false;
-		success = false;
+		// Ensure params exists before iterating
+		if (info.params) {
+			Object.keys(info.params).forEach((key) => {
+				// Check if the value is null or an empty string
+				if (info.params[key] === '' || info.params[key] === null) {
+					// Special check for custom_roles: only delete if it doesn't exist after filtering
+					if (key !== 'custom_roles' || !info.params.hasOwnProperty('custom_roles')) {
+						delete info.params[key];
+					}
+				}
+			});
+		}
+
+
+		try {
+			await onSubmit(info);
+			success = true; // Assume success if onSubmit doesn't throw
+		} catch (error) {
+			console.error("Submission error:", error);
+			toast.error("Failed to save model."); // Provide feedback on error
+			success = false;
+		} finally {
+			loading = false;
+		}
+
 	};
+
+	// Added helper functions for custom roles
+	const addCustomRole = () => {
+		// Directly modify the array bound to the info object's params
+	  if (!info.params) info.params = {}; // Ensure params exists
+	  if (!info.params.custom_roles) {
+			info.params.custom_roles = [];
+	  }
+		info.params.custom_roles = [...info.params.custom_roles, { role: '', value: '' }];
+		customRoles = info.params.custom_roles; // Ensure local variable syncs
+	};
+
+	const deleteCustomRole = (index) => {
+	  // Ensure params and custom_roles exist
+	  if (info.params?.custom_roles) {
+			info.params.custom_roles.splice(index, 1);
+			info.params.custom_roles = info.params.custom_roles; // Trigger reactivity
+		customRoles = info.params.custom_roles; // Ensure local variable syncs
+	  }
+	};
+	// End of added helper functions
 
 	onMount(async () => {
 		await tools.set(await getTools(localStorage.token));
@@ -185,7 +270,7 @@
 
 			id = model.id;
 
-			enableDescription = model?.meta?.description !== null;
+			enableDescription = model?.meta?.description !== null && model?.meta?.description !== undefined ;
 
 			if (model.base_model_id) {
 				const base_model = $models
@@ -201,17 +286,45 @@
 				}
 			}
 
-			params = { ...params, ...model?.params };
-			params.stop = params?.stop
-				? (typeof params.stop === 'string' ? params.stop.split(',') : (params?.stop ?? [])).join(
+
+			// Deep clone the model to avoid modifying the original store object directly
+			// This is crucial if `model` comes from a reactive store
+			info = JSON.parse(JSON.stringify(model));
+
+			// Ensure info.params exists after cloning
+			if (!info.params) {
+				info.params = { system: '' };
+			} else {
+				// Ensure system exists if params exists
+				info.params.system = info.params.system ?? '';
+			}
+
+
+			// Ensure info.meta exists after cloning
+			if (!info.meta) {
+				info.meta = { profile_image_url: '/static/favicon.png', description: '', suggestion_prompts: null, tags: [] };
+			} else {
+				// Ensure necessary meta fields exist
+				info.meta.profile_image_url = info.meta.profile_image_url ?? '/static/favicon.png';
+				info.meta.tags = info.meta.tags ?? [];
+				info.meta.description = info.meta.description ?? ''; // Initialize if null/undefined
+				info.meta.suggestion_prompts = info.meta.suggestion_prompts ?? null; // Initialize if null/undefined
+			}
+
+			// Merge existing params from the cloned model into the local params state for the UI components
+			// Ensure the local `params` object (used by AdvancedParams) is correctly initialized
+			params = { system: '', stop: '', ...info.params }; // Start with defaults, overwrite with info.params
+			params.stop = info.params?.stop // Use optional chaining
+				? (typeof info.params.stop === 'string' ? info.params.stop.split(',') : (info.params.stop ?? [])).join(
 						','
 					)
-				: null;
+				: ''; // Use empty string for null/undefined to bind correctly to input
 
-			toolIds = model?.meta?.toolIds ?? [];
-			filterIds = model?.meta?.filterIds ?? [];
-			actionIds = model?.meta?.actionIds ?? [];
-			knowledge = (model?.meta?.knowledge ?? []).map((item) => {
+
+			toolIds = info?.meta?.toolIds ?? [];
+			filterIds = info?.meta?.filterIds ?? [];
+			actionIds = info?.meta?.actionIds ?? [];
+			knowledge = (info?.meta?.knowledge ?? []).map((item) => {
 				if (item?.collection_name) {
 					return {
 						id: item.collection_name,
@@ -229,33 +342,41 @@
 					return item;
 				}
 			});
-			capabilities = { ...capabilities, ...(model?.meta?.capabilities ?? {}) };
+			capabilities = { ...capabilities, ...(info?.meta?.capabilities ?? {}) };
 
-			if ('access_control' in model) {
-				accessControl = model.access_control;
+			// Ensure access_control is initialized properly
+			if ('access_control' in info && info.access_control !== null && info.access_control !== undefined) {
+				accessControl = info.access_control;
 			} else {
 				accessControl = {};
 			}
 
-			console.log(model?.access_control);
-			console.log(accessControl);
 
+			console.log('Loaded model:', info);
+			// The reactive block `$: {...}` handles customRoles initialization
+
+		} else {
+			// Initialize for a new model if needed
 			info = {
-				...info,
-				...JSON.parse(
-					JSON.stringify(
-						model
-							? model
-							: {
-									id: model.id,
-									name: model.name
-								}
-					)
-				)
+				id: '',
+				base_model_id: null,
+				name: '',
+				meta: {
+					profile_image_url: '/static/favicon.png',
+					description: '',
+					suggestion_prompts: null,
+					tags: []
+				},
+				params: {
+					system: '',
+					custom_roles: [] // Ensure it's initialized for new models too
+				}
 			};
-
-			console.log(model);
+			params = { system: '', stop: '' }; // Reset local params, include stop
+			customRoles = info.params.custom_roles; // Sync customRoles
+			accessControl = {}; // Reset access control
 		}
+
 
 		loaded = true;
 	});
@@ -264,9 +385,8 @@
 {#if loaded}
 	{#if onBack}
 		<button
-			class="flex space-x-1"
-			on:click={() => {
-				onBack();
+			class="flex space-x-1 mb-3 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200" on:click={() => {
+				if (onBack) onBack();
 			}}
 		>
 			<div class=" self-center">
@@ -283,7 +403,7 @@
 					/>
 				</svg>
 			</div>
-			<div class=" self-center text-sm font-medium">{'Back'}</div>
+			<div class=" self-center">{$i18n.t('Back')}</div>
 		</button>
 	{/if}
 
@@ -297,6 +417,7 @@
 			on:change={() => {
 				let reader = new FileReader();
 				reader.onload = (event) => {
+					if (!event.target?.result) return;
 					let originalImageUrl = `${event.target.result}`;
 
 					const img = new Image();
@@ -305,41 +426,61 @@
 					img.onload = function () {
 						const canvas = document.createElement('canvas');
 						const ctx = canvas.getContext('2d');
+						if (!ctx) return; // Add null check for context
 
 						// Calculate the aspect ratio of the image
 						const aspectRatio = img.width / img.height;
 
-						// Calculate the new width and height to fit within 100x100
+						// Calculate the new width and height to fit within target size (e.g., 250x250)
 						let newWidth, newHeight;
-						if (aspectRatio > 1) {
-							newWidth = 250 * aspectRatio;
-							newHeight = 250;
-						} else {
-							newWidth = 250;
-							newHeight = 250 / aspectRatio;
-						}
+						const targetSize = 250; // Define target size
+						if (img.width > img.height) {
+                            newWidth = targetSize;
+                            newHeight = targetSize / aspectRatio;
+                        } else {
+                            newHeight = targetSize;
+                            newWidth = targetSize * aspectRatio;
+                        }
 
-						// Set the canvas size
-						canvas.width = 250;
-						canvas.height = 250;
+
+						// Set the canvas size (square in this case)
+						canvas.width = targetSize;
+						canvas.height = targetSize;
+
+						// Fill background if needed (e.g., for transparency handling)
+                        // ctx.fillStyle = "#FFFFFF"; // Optional: set background color
+                        // ctx.fillRect(0, 0, targetSize, targetSize);
 
 						// Calculate the position to center the image
-						const offsetX = (250 - newWidth) / 2;
-						const offsetY = (250 - newHeight) / 2;
+						const offsetX = (targetSize - newWidth) / 2;
+						const offsetY = (targetSize - newHeight) / 2;
 
 						// Draw the image on the canvas
 						ctx.drawImage(img, offsetX, offsetY, newWidth, newHeight);
 
 						// Get the base64 representation of the compressed image
-						const compressedSrc = canvas.toDataURL();
+						const compressedSrc = canvas.toDataURL('image/png'); // Specify format if needed
 
 						// Display the compressed image
-						info.meta.profile_image_url = compressedSrc;
+						if (info.meta) info.meta.profile_image_url = compressedSrc;
 
 						inputFiles = null;
-						filesInputElement.value = '';
+						if (filesInputElement) filesInputElement.value = ''; // Clear file input
+					};
+
+					img.onerror = function () {
+						toast.error("Failed to load image for processing.");
+						inputFiles = null;
+						if (filesInputElement) filesInputElement.value = ''; // Clear file input
 					};
 				};
+
+				reader.onerror = function () {
+					toast.error("Failed to read the selected file.");
+					inputFiles = null;
+					if (filesInputElement) filesInputElement.value = ''; // Clear file input
+				};
+
 
 				if (
 					inputFiles &&
@@ -349,9 +490,10 @@
 					)
 				) {
 					reader.readAsDataURL(inputFiles[0]);
-				} else {
-					console.log(`Unsupported File Type '${inputFiles[0]['type']}'.`);
+				} else if (inputFiles && inputFiles.length > 0) {
+					toast.error(`Unsupported File Type '${inputFiles[0]['type']}'. Please select an image.`);
 					inputFiles = null;
+                    if (filesInputElement) filesInputElement.value = ''; // Clear file input
 				}
 			}}
 		/>
@@ -363,30 +505,27 @@
 					submitHandler();
 				}}
 			>
-				<div class="self-center md:self-start flex justify-center my-2 shrink-0">
-					<div class="self-center">
+				<div class="self-center md:self-start flex-col items-center md:items-start my-2 shrink-0"> <div class="self-center">
 						<button
-							class="rounded-xl flex shrink-0 items-center {info.meta.profile_image_url !==
+							class="rounded-xl flex shrink-0 items-center {info?.meta?.profile_image_url && info.meta.profile_image_url !==
 							'/static/favicon.png'
 								? 'bg-transparent'
-								: 'bg-white'} shadow-xl group relative"
+								: 'bg-white dark:bg-gray-900'} shadow-xl group relative border dark:border-gray-700"
 							type="button"
 							on:click={() => {
-								filesInputElement.click();
+								if(filesInputElement) filesInputElement.click();
 							}}
 						>
-							{#if info.meta.profile_image_url}
+							{#if info?.meta?.profile_image_url}
 								<img
 									src={info.meta.profile_image_url}
 									alt="model profile"
-									class="rounded-xl size-72 md:size-60 object-cover shrink-0"
-								/>
+									class="rounded-xl size-72 md:size-60 object-cover shrink-0" />
 							{:else}
 								<img
 									src="/static/favicon.png"
 									alt="model profile"
-									class=" rounded-xl size-72 md:size-60 object-cover shrink-0"
-								/>
+									class=" rounded-xl size-72 md:size-60 object-cover shrink-0" />
 							{/if}
 
 							<div class="absolute bottom-0 right-0 z-10">
@@ -415,50 +554,49 @@
 							></div>
 						</button>
 
-						<div class="flex w-full mt-1 justify-end">
-							<button
-								class="px-2 py-1 text-gray-500 rounded-lg text-xs"
-								on:click={() => {
-									info.meta.profile_image_url = '/static/favicon.png';
-								}}
-								type="button"
-							>
-								Reset Image</button
-							>
-						</div>
+						{#if info?.meta?.profile_image_url && info.meta.profile_image_url !== '/static/favicon.png'} <div class="flex w-full mt-1 justify-end">
+								<button
+									class="px-2 py-1 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg text-xs"
+									on:click={() => {
+										if (info.meta) info.meta.profile_image_url = '/static/favicon.png';
+									}}
+									type="button"
+								>
+									{$i18n.t('Reset Image')}</button
+								>
+							</div>
+						{/if}
 					</div>
 				</div>
 
+
 				<div class="w-full">
 					<div class="mt-2 my-2 flex flex-col">
-						<div class="flex-1">
-							<div>
-								<input
-									class="text-3xl font-semibold w-full bg-transparent outline-hidden"
-									placeholder={$i18n.t('Model Name')}
-									bind:value={name}
-									required
-								/>
-							</div>
+						<div class="flex-1 mb-2"> <label for="model-name" class="text-sm font-semibold mb-1 block">{$i18n.t('Model Name')}</label>
+							<input
+								id="model-name"
+								class="text-xl font-semibold w-full bg-transparent outline-none py-2 px-3 border border-gray-200 dark:border-gray-700 rounded-lg dark:bg-gray-900"
+								placeholder={$i18n.t('Enter Model Name')}
+								bind:value={name}
+								required
+							/>
 						</div>
 
 						<div class="flex-1">
-							<div>
-								<input
-									class="text-xs w-full bg-transparent text-gray-500 outline-hidden"
-									placeholder={$i18n.t('Model ID')}
-									bind:value={id}
-									disabled={edit}
-									required
-								/>
-							</div>
+							<label for="model-id" class="text-sm font-semibold mb-1 block">{$i18n.t('Model ID')}</label>
+							<input
+								id="model-id"
+								class="text-xs w-full bg-transparent text-gray-500 outline-none py-2 px-3 border border-gray-200 dark:border-gray-700 rounded-lg dark:bg-gray-900"
+								placeholder={$i18n.t('model-id-will-be-generated')}
+								bind:value={id}
+								disabled={edit}
+								required
+							/>
 						</div>
 					</div>
 
 					{#if preset}
-						<div class="my-1">
-							<div class=" text-sm font-semibold mb-1">{$i18n.t('Base Model (From)')}</div>
-
+						<div class="my-3"> <label for="base-model-select" class=" text-sm font-semibold mb-1 block">{$i18n.t('Base Model (From)')}</label>
 							<div>
 								<select
 									class="text-sm w-full bg-transparent outline-hidden"
@@ -469,24 +607,21 @@
 									}}
 									required
 								>
-									<option value={null} class=" text-gray-900"
-										>{$i18n.t('Select a base model')}</option
+									<option value={null} class=" text-gray-900 dark:text-gray-100 dark:bg-gray-800" disabled selected={info.base_model_id === null}
+										>{$i18n.t('-- Select a base model --')}</option
 									>
-									{#each $models.filter((m) => (model ? m.id !== model.id : true) && !m?.preset && m?.owned_by !== 'arena') as model}
-										<option value={model.id} class=" text-gray-900">{model.name}</option>
-									{/each}
+									{#each $models.filter((m) => (model ? m.id !== model.id : true) && !m?.preset && m?.owned_by !== 'arena') as modelOption (modelOption.id)}
+										<option value={modelOption.id} class=" text-gray-900 dark:text-gray-100 dark:bg-gray-800">{modelOption.name} ({modelOption.id})</option> {/each}
 								</select>
 							</div>
 						</div>
 					{/if}
 
-					<div class="my-1">
-						<div class="mb-1 flex w-full justify-between items-center">
+					<div class="my-3"> <div class="mb-1 flex w-full justify-between items-center">
 							<div class=" self-center text-sm font-semibold">{$i18n.t('Description')}</div>
 
 							<button
-								class="p-1 text-xs flex rounded-sm transition"
-								type="button"
+								class="p-1 px-2 text-xs flex rounded-sm transition text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200" type="button"
 								on:click={() => {
 									enableDescription = !enableDescription;
 								}}
@@ -501,36 +636,41 @@
 
 						{#if enableDescription}
 							<Textarea
-								className=" text-sm w-full bg-transparent outline-hidden resize-none overflow-y-hidden "
+								className=" text-sm w-full bg-transparent outline-none resize-none overflow-y-hidden "
 								placeholder={$i18n.t('Add a short description about what this model does')}
 								bind:value={info.meta.description}
 							/>
 						{/if}
 					</div>
 
-					<div class=" mt-2 my-1">
-						<div class="">
+					<div class=" mt-2 my-3"> <div class=" text-sm font-semibold mb-1">{$i18n.t('Tags')}</div> <div class="">
 							<Tags
 								tags={info?.meta?.tags ?? []}
 								on:delete={(e) => {
 									const tagName = e.detail;
-									info.meta.tags = info.meta.tags.filter((tag) => tag.name !== tagName);
+									if (info.meta?.tags) {
+										info.meta.tags = info.meta.tags.filter((tag) => tag.name !== tagName);
+									}
 								}}
 								on:add={(e) => {
 									const tagName = e.detail;
-									if (!(info?.meta?.tags ?? null)) {
+									if (!info.meta) info.meta = {}; // Ensure meta exists
+									if (!(info.meta.tags ?? null)) {
 										info.meta.tags = [{ name: tagName }];
 									} else {
-										info.meta.tags = [...info.meta.tags, { name: tagName }];
+										// Avoid adding duplicate tags
+										if (!info.meta.tags.some(tag => tag.name === tagName)) {
+											info.meta.tags = [...info.meta.tags, { name: tagName }];
+										} else {
+											toast.info(`Tag "${tagName}" already exists.`);
+										}
 									}
 								}}
 							/>
 						</div>
 					</div>
 
-					<div class="my-2">
-						<div class="px-3 py-2 bg-gray-50 dark:bg-gray-950 rounded-lg">
-							<AccessControl
+					<div class="my-3"> <div class=" text-sm font-semibold mb-1">{$i18n.t('Access Control')}</div> <div class="px-3 py-2 bg-gray-50 dark:bg-gray-950 rounded-lg border dark:border-gray-800"> <AccessControl
 								bind:accessControl
 								accessRoles={['read', 'write']}
 								allowPublic={$user?.permissions?.sharing?.public_models || $user?.role === 'admin'}
@@ -538,11 +678,7 @@
 						</div>
 					</div>
 
-					<hr class=" border-gray-100 dark:border-gray-850 my-1.5" />
-
-					<div class="my-2">
-						<div class="flex w-full justify-between">
-							<div class=" self-center text-sm font-semibold">{$i18n.t('Model Params')}</div>
+					<hr class=" border-gray-100 dark:border-gray-850 my-3" /> <div class="my-3"> <div class="flex w-full justify-between mb-2"> <div class=" self-center text-sm font-semibold">{$i18n.t('Model Params')}</div>
 						</div>
 
 						<div class="mt-2">
@@ -550,7 +686,7 @@
 								<div class=" text-xs font-semibold mb-2">{$i18n.t('System Prompt')}</div>
 								<div>
 									<Textarea
-										className=" text-sm w-full bg-transparent outline-hidden resize-none overflow-y-hidden "
+										className=" text-sm w-full bg-transparent outline-none resize-none overflow-y-hidden "
 										placeholder={`Write your model system prompt content here\ne.g.) You are Mario from Super Mario Bros, acting as an assistant.`}
 										rows={4}
 										bind:value={info.params.system}
@@ -558,14 +694,60 @@
 								</div>
 							</div>
 
-							<div class="flex w-full justify-between">
+							<div class="my-1 border-t border-gray-100 dark:border-gray-850 pt-1.5">
+							  <div class=" text-xs font-semibold mb-2">{$i18n.t('Custom Roles')}</div>
+							  {#if customRoles.length > 0}
+								<div class="flex flex-col gap-2.5 mb-2.5">
+								  {#each customRoles as roleItem, i (i)}
+									<div class="flex items-start gap-2">
+									  <div class="flex-1 flex flex-row gap-2 items-start">
+										<input
+										  bind:value={roleItem.role}
+										  placeholder={$i18n.t("Role Name")}
+										  class="w-1/3 text-sm bg-transparent outline-none py-2 px-3 border border-gray-200 dark:border-gray-700 rounded-lg dark:bg-gray-900"
+										  aria-label="Role Name"
+										/>
+										<Textarea
+										  bind:value={roleItem.value}
+										  placeholder={$i18n.t("Role Value")}
+										  className=" text-sm w-full bg-transparent outline-none py-2 px-3 border border-gray-200 dark:border-gray-700 rounded-lg dark:bg-gray-900 resize-none overflow-y-hidden "
+										  rows={4}										  
+										/>
+									  </div>
+									  <button
+										class="btn p-2 variant-soft-error !text-error-500 mt-1" on:click={() => deleteCustomRole(i)}
+										title={$i18n.t('Delete Role')}
+										type="button"
+									  >
+										<GarbageBin /> </button>
+									</div>
+								  {/each}
+								</div>
+							  {/if}
+
+							  <div class="mt-1">
+								<button
+								  class="btn variant-soft text-xs inline-flex items-center" on:click={addCustomRole}
+								  title={$i18n.t('Add Custom Role')}
+								  type="button"
+								>
+								  <span class="mr-1"><Plus /></span>
+								  {$i18n.t('Add Role')}
+								</button>
+							  </div>
+							  <p class="text-xs text-gray-500 mt-1">
+								{$i18n.t(
+								 'Define custom roles and their corresponding values to be included in the request sent to the LLM.'
+								)}
+							  </p>
+							</div>
+							<div class="flex w-full justify-between border-t border-gray-100 dark:border-gray-850 pt-1.5 mt-1.5">
 								<div class=" self-center text-xs font-semibold">
 									{$i18n.t('Advanced Params')}
 								</div>
 
 								<button
-									class="p-1 px-3 text-xs flex rounded-sm transition"
-									type="button"
+									class="p-1 px-3 text-xs flex rounded-sm transition text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200" type="button"
 									on:click={() => {
 										showAdvanced = !showAdvanced;
 									}}
@@ -584,6 +766,8 @@
 										admin={true}
 										bind:params
 										on:change={(e) => {
+											// Merge changed advanced params back into info.params
+											if (!info.params) info.params = {}; // Ensure params exists
 											info.params = { ...info.params, ...params };
 										}}
 									/>
@@ -592,24 +776,22 @@
 						</div>
 					</div>
 
-					<hr class=" border-gray-100 dark:border-gray-850 my-1" />
-
-					<div class="my-2">
-						<div class="flex w-full justify-between items-center">
+					<hr class=" border-gray-100 dark:border-gray-850 my-3" /> <div class="my-3"> <div class="flex w-full justify-between items-center">
 							<div class="flex w-full justify-between items-center">
 								<div class=" self-center text-sm font-semibold">
 									{$i18n.t('Prompt suggestions')}
 								</div>
 
 								<button
-									class="p-1 text-xs flex rounded-sm transition"
-									type="button"
+									class="p-1 px-2 text-xs flex rounded-sm transition text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200" type="button"
 									on:click={() => {
-										if ((info?.meta?.suggestion_prompts ?? null) === null) {
+										if (!info.meta) info.meta = {}; // Ensure meta exists
+										if ((info.meta.suggestion_prompts ?? null) === null) {
 											info.meta.suggestion_prompts = [{ content: '' }];
 										} else {
 											info.meta.suggestion_prompts = null;
 										}
+                                        info.meta = info.meta; // Trigger reactivity
 									}}
 								>
 									{#if (info?.meta?.suggestion_prompts ?? null) === null}
@@ -622,13 +804,15 @@
 
 							{#if (info?.meta?.suggestion_prompts ?? null) !== null}
 								<button
-									class="p-1 px-2 text-xs flex rounded-sm transition"
-									type="button"
+									class="p-1 px-2 text-xs flex rounded-sm transition text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200" type="button"
 									on:click={() => {
+										if (!info.meta) info.meta = {}; // Ensure meta exists
 										if (
+											!info.meta.suggestion_prompts || // Ensure array exists
 											info.meta.suggestion_prompts.length === 0 ||
-											info.meta.suggestion_prompts.at(-1).content !== ''
+											info.meta.suggestion_prompts.at(-1)?.content !== '' // Use optional chaining
 										) {
+                                            if (!info.meta.suggestion_prompts) info.meta.suggestion_prompts = []; // Initialize if null/undefined
 											info.meta.suggestion_prompts = [
 												...info.meta.suggestion_prompts,
 												{ content: '' }
@@ -653,27 +837,29 @@
 						{#if info?.meta?.suggestion_prompts}
 							<div class="flex flex-col space-y-1 mt-1 mb-3">
 								{#if info.meta.suggestion_prompts.length > 0}
-									{#each info.meta.suggestion_prompts as prompt, promptIdx}
-										<div class=" flex rounded-lg">
+									{#each info.meta.suggestion_prompts as prompt, promptIdx (promptIdx)}
+										<div class=" flex rounded-lg border border-gray-200 dark:border-gray-700">
 											<input
-												class=" text-sm w-full bg-transparent outline-hidden border-r border-gray-100 dark:border-gray-850"
+												class=" text-sm w-full bg-transparent outline-none px-2 py-1 border-r border-gray-200 dark:border-gray-700"
 												placeholder={$i18n.t('Write a prompt suggestion (e.g. Who are you?)')}
 												bind:value={prompt.content}
 											/>
 
 											<button
-												class="px-2"
+												class="px-2 hover:bg-red-100 dark:hover:bg-red-900/50"
 												type="button"
 												on:click={() => {
-													info.meta.suggestion_prompts.splice(promptIdx, 1);
-													info.meta.suggestion_prompts = info.meta.suggestion_prompts;
+													if (info.meta?.suggestion_prompts) {
+														info.meta.suggestion_prompts.splice(promptIdx, 1);
+														info.meta.suggestion_prompts = info.meta.suggestion_prompts; // Trigger reactivity
+													}
 												}}
 											>
 												<svg
 													xmlns="http://www.w3.org/2000/svg"
 													viewBox="0 0 20 20"
 													fill="currentColor"
-													class="w-4 h-4"
+													class="w-4 h-4 text-red-500"
 												>
 													<path
 														d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z"
@@ -683,47 +869,36 @@
 										</div>
 									{/each}
 								{:else}
-									<div class="text-xs text-center">No suggestion prompts</div>
+									<div class="text-xs text-center text-gray-500">{$i18n.t('No suggestion prompts')}</div>
 								{/if}
 							</div>
 						{/if}
 					</div>
 
-					<hr class=" border-gray-100 dark:border-gray-850 my-1.5" />
-
-					<div class="my-2">
-						<Knowledge bind:selectedKnowledge={knowledge} collections={$knowledgeCollections} />
+					<hr class=" border-gray-100 dark:border-gray-850 my-3" /> <div class="my-3"> <div class=" text-sm font-semibold mb-1">{$i18n.t('Knowledge Base')}</div> <Knowledge bind:selectedKnowledge={knowledge} collections={$knowledgeCollections} />
 					</div>
 
-					<div class="my-2">
-						<ToolsSelector bind:selectedToolIds={toolIds} tools={$tools} />
+					<div class="my-3"> <div class=" text-sm font-semibold mb-1">{$i18n.t('Tools')}</div> <ToolsSelector bind:selectedToolIds={toolIds} tools={$tools} />
 					</div>
 
-					<div class="my-2">
-						<FiltersSelector
+					<div class="my-3"> <div class=" text-sm font-semibold mb-1">{$i18n.t('Filters')}</div> <FiltersSelector
 							bind:selectedFilterIds={filterIds}
 							filters={$functions.filter((func) => func.type === 'filter')}
 						/>
 					</div>
 
-					<div class="my-2">
-						<ActionsSelector
+					<div class="my-3"> <div class=" text-sm font-semibold mb-1">{$i18n.t('Actions')}</div> <ActionsSelector
 							bind:selectedActionIds={actionIds}
 							actions={$functions.filter((func) => func.type === 'action')}
 						/>
 					</div>
 
-					<div class="my-2">
-						<Capabilities bind:capabilities />
+					<div class="my-3"> <div class=" text-sm font-semibold mb-1">{$i18n.t('Capabilities')}</div> <Capabilities bind:capabilities />
 					</div>
 
-					<div class="my-2 text-gray-300 dark:text-gray-700">
-						<div class="flex w-full justify-between mb-2">
-							<div class=" self-center text-sm font-semibold">{$i18n.t('JSON Preview')}</div>
-
-							<button
-								class="p-1 px-3 text-xs flex rounded-sm transition"
-								type="button"
+					<div class="my-3 text-gray-500 dark:text-gray-400"> <div class="flex w-full justify-between mb-2">
+							<div class=" self-center text-sm font-semibold text-gray-700 dark:text-gray-300">{$i18n.t('JSON Preview')}</div> <button
+								class="p-1 px-3 text-xs flex rounded-sm transition text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200" type="button"
 								on:click={() => {
 									showPreview = !showPreview;
 								}}
@@ -739,25 +914,22 @@
 						{#if showPreview}
 							<div>
 								<textarea
-									class="text-sm w-full bg-transparent outline-hidden resize-none"
+									class="text-xs font-mono w-full bg-gray-50 dark:bg-gray-950 outline-none resize-none p-2 rounded border border-gray-200 dark:border-gray-700"
 									rows="10"
 									value={JSON.stringify(info, null, 2)}
-									disabled
 									readonly
 								/>
 							</div>
 						{/if}
 					</div>
 
-					<div class="my-2 flex justify-end pb-20">
-						<button
+					<div class="my-3 flex justify-end pb-20"> <button
 							class=" text-sm px-3 py-2 transition rounded-lg {loading
-								? ' cursor-not-allowed bg-black hover:bg-gray-900 text-white dark:bg-white dark:hover:bg-gray-100 dark:text-black'
-								: 'bg-black hover:bg-gray-900 text-white dark:bg-white dark:hover:bg-gray-100 dark:text-black'} flex w-full justify-center"
-							type="submit"
+								? ' cursor-not-allowed bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+								: 'bg-black hover:bg-gray-900 text-white dark:bg-white dark:hover:bg-gray-100 dark:text-black'} flex w-full justify-center font-medium" type="submit"
 							disabled={loading}
 						>
-							<div class=" self-center font-medium">
+							<div class=" self-center">
 								{#if edit}
 									{$i18n.t('Save & Update')}
 								{:else}
@@ -768,8 +940,7 @@
 							{#if loading}
 								<div class="ml-1.5 self-center">
 									<svg
-										class=" w-4 h-4"
-										viewBox="0 0 24 24"
+										class=" w-4 h-4 animate-spin" viewBox="0 0 24 24"
 										fill="currentColor"
 										xmlns="http://www.w3.org/2000/svg"
 										><style>
@@ -799,3 +970,4 @@
 		{/if}
 	</div>
 {/if}
+
