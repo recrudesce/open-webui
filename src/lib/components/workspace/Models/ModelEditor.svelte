@@ -60,6 +60,9 @@
 		modelControlTranslationSource,
 		pruneEmptyLocaleEntries
 	} from '$lib/utils/localizedContent';
+	import type { Banner } from '$lib/types';
+	import Banners from '$lib/components/admin/Settings/Interface/Banners.svelte';
+	import Plus from '$lib/components/icons/Plus.svelte';
 
 	const i18n: any = getContext('i18n');
 	const formId = `model-editor-${uuidv4()}`;
@@ -168,7 +171,8 @@
 			description: '',
 			i18n: {} as Record<string, Record<string, any>>,
 			suggestion_prompts: null,
-			tags: []
+			tags: [],
+			banners: [] as Banner[]
 		},
 		params: {
 			system: ''
@@ -204,6 +208,7 @@
 	let terminalId = '';
 	let tts = { voice: '' };
 	let voice = { voice: '' };
+	let banners: Banner[] = [];
 	export let suggestionTags: { name: string }[] = [];
 	let voices: { id: string; name?: string }[] = [];
 
@@ -441,6 +446,15 @@
 			delete modelInfo.meta.i18n;
 		}
 
+		const cleanBanners = banners.filter((b) => (b.content ?? '').trim() !== '');
+		if (cleanBanners.length > 0) {
+			modelInfo.meta.banners = cleanBanners;
+		} else {
+			if (modelInfo.meta.banners) {
+				delete modelInfo.meta.banners;
+			}
+		}
+
 		if (terminalId) {
 			modelInfo.meta.terminalId = terminalId;
 		} else {
@@ -607,6 +621,7 @@
 		animationFiles = {};
 		commitMessage = '';
 		editingLocale = '';
+		banners = [];
 		clearBackgroundPreview();
 		if (model) {
 			model.meta ??= {};
@@ -682,6 +697,7 @@
 			voice = { voice: model?.meta?.voice?.voice ?? '' };
 
 			accessGrants = model?.access_grants ?? [];
+			banners = structuredClone(model?.meta?.banners ?? []);
 
 			info = structuredClone(model);
 			info.meta.i18n = info.meta.i18n ?? {};
@@ -1644,6 +1660,53 @@
 									{#if capabilities.terminal}
 										<TerminalSelector bind:terminalId />
 									{/if}
+									<ModelSettingsSection
+										label={$i18n.t('Banners')}
+										description={$i18n.t(
+											'Set custom banners to display in the chat when this model is selected.'
+										)}
+										summary={banners.length > 0 ? `${banners.length}` : $i18n.t('None')}
+									>
+										<div class="space-y-2">
+											<div class="flex items-center justify-between pb-1 text-xs">
+												<div class="text-gray-500 dark:text-gray-400">
+													{$i18n.t(
+														'Banners will be shown at the top of the chat when this model is selected.'
+													)}
+												</div>
+												{#if !readOnly}
+													<button
+														type="button"
+														class="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+														on:click={() => {
+															banners = [
+																...banners,
+																{
+																	id: uuidv4(),
+																	type: 'info',
+																	title: '',
+																	content: '',
+																	dismissible: true,
+																	timestamp: Math.floor(Date.now() / 1000)
+																}
+															];
+														}}
+													>
+														<Plus className="size-3" />
+														<span>{$i18n.t('Add Banner')}</span>
+													</button>
+												{/if}
+											</div>
+
+											{#if banners.length > 0}
+												<Banners bind:banners locale={editingLocale} disabled={readOnly} />
+											{:else}
+												<div class="px-1 py-1 text-xs text-gray-400 dark:text-gray-500">
+													{$i18n.t('No banners configured for this model.')}
+												</div>
+											{/if}
+										</div>
+									</ModelSettingsSection>
 								</div>
 							</fieldset>
 

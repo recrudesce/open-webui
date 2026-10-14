@@ -8,12 +8,14 @@
 		chatId,
 		config,
 		mobile,
+		models,
 		settings,
 		showControls,
 		showSidebar,
 		temporaryChatEnabled,
 		user
 	} from '$lib/stores';
+	import type { Banner as BannerType } from '$lib/types';
 
 	import { slide } from 'svelte/transition';
 	import { page } from '$app/stores';
@@ -52,6 +54,7 @@
 	export let archiveChatHandler: (id: string) => void;
 	export let deleteChatHandler: (id: string) => void;
 	export let moveChatHandler: (id: string, folderId: string) => void;
+	export let selectedModels: string[] = [];
 
 	let closedBannerIds = [];
 
@@ -62,6 +65,56 @@
 			return [];
 		}
 	};
+
+	$: currentModelIds = (
+		(selectedModels && selectedModels.length > 0 ? selectedModels : (chat?.chat?.models ?? [])) || []
+	).filter((id) => id && id.trim() !== '');
+
+	$: modelBanners = currentModelIds
+		.flatMap((modelId) => {
+			const model = $models.find((m) => m.id === modelId);
+			return (model?.info?.meta?.banners ?? model?.meta?.banners ?? []) as BannerType[];
+		})
+		.filter((b) => b && b.content);
+
+	$: uniqueModelBanners = modelBanners.filter(
+		(banner, index, self) => index === self.findIndex((b) => b.id === banner.id)
+	);
+
+	const handleDismiss = (bannerId: string, dismissible = true) => {
+		if (dismissible) {
+			const allKnownBannerIds = new Set([
+				...$banners.map((b) => b.id),
+				...$models.flatMap((m) => (m?.info?.meta?.banners ?? m?.meta?.banners ?? []).map((b) => b.id))
+			]);
+
+			localStorage.setItem(
+				'dismissedBannerIds',
+				JSON.stringify(
+					[bannerId, ...getDismissedBannerIds()].filter((id) =>
+						allKnownBannerIds.size > 0 ? allKnownBannerIds.has(id) : true
+					)
+				)
+			);
+		} else {
+			closedBannerIds = [...closedBannerIds, bannerId];
+		}
+	};
+
+	$: isNewChat = !history?.currentId && !$chatId;
+	$: showTrial = isNewChat && ($config?.license_metadata?.type ?? null) === 'trial';
+	$: showSeatError =
+		isNewChat &&
+		($config?.license_metadata?.seats ?? null) !== null &&
+		$config?.user_count > $config?.license_metadata?.seats;
+	$: activeGlobalBanners = isNewChat
+		? $banners.filter((b) => ![...getDismissedBannerIds(), ...closedBannerIds].includes(b.id))
+		: [];
+	$: activeModelBanners = uniqueModelBanners.filter(
+		(b) =>
+			(isNewChat ? !$banners.some((gb) => gb.id === b.id) : true) &&
+			![...getDismissedBannerIds(), ...closedBannerIds].includes(b.id)
+	);
 
 	let showShareChatModal = false;
 	let showDownloadChatModal = false;
@@ -268,12 +321,12 @@
 	{/if}
 
 	<div class="absolute top-[100%] left-0 right-0 h-fit">
-		{#if !history.currentId && !$chatId && ($banners.length > 0 || ($config?.license_metadata?.type ?? null) === 'trial' || (($config?.license_metadata?.seats ?? null) !== null && $config?.user_count > $config?.license_metadata?.seats))}
+		{#if showTrial || showSeatError || activeGlobalBanners.length > 0 || activeModelBanners.length > 0}
 			<div class=" w-full z-30">
 				<div
 					class=" flex flex-col gap-1 w-full max-h-28 overflow-y-auto overscroll-contain md:max-h-none md:overflow-visible"
 				>
-					{#if ($config?.license_metadata?.type ?? null) === 'trial'}
+					{#if showTrial}
 						<Banner
 							banner={{
 								type: 'info',
@@ -285,7 +338,7 @@
 						/>
 					{/if}
 
-					{#if ($config?.license_metadata?.seats ?? null) !== null && $config?.user_count > $config?.license_metadata?.seats}
+					{#if showSeatError}
 						<Banner
 							banner={{
 								type: 'error',
@@ -297,25 +350,17 @@
 						/>
 					{/if}
 
-					{#each $banners.filter((b) => ![...getDismissedBannerIds(), ...closedBannerIds].includes(b.id)) as banner (banner.id)}
+					{#each activeGlobalBanners as banner (banner.id)}
 						<Banner
 							{banner}
-							on:dismiss={(e) => {
-								const bannerId = e.detail;
+							on:dismiss={(e) => handleDismiss(e.detail, banner.dismissible)}
+						/>
+					{/each}
 
-								if (banner.dismissible) {
-									localStorage.setItem(
-										'dismissedBannerIds',
-										JSON.stringify(
-											[bannerId, ...getDismissedBannerIds()].filter((id) =>
-												$banners.find((b) => b.id === id)
-											)
-										)
-									);
-								} else {
-									closedBannerIds = [...closedBannerIds, bannerId];
-								}
-							}}
+					{#each activeModelBanners as banner (banner.id)}
+						<Banner
+							{banner}
+							on:dismiss={(e) => handleDismiss(e.detail, banner.dismissible)}
 						/>
 					{/each}
 				</div>

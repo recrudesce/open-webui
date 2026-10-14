@@ -151,6 +151,7 @@ class ModelMeta(BaseModel):
     knowledge: list[Any] | None = None
     voice: ModelVoice | None = None
     voice_avatar: ModelVoiceAvatar | None = None
+    banners: list[dict[str, Any]] | None = None
 
     model_config = ConfigDict(extra='allow')
 

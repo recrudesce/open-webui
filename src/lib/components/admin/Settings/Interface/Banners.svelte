@@ -11,6 +11,7 @@
 
 	export let banners = [];
 	export let locale = '';
+	export let disabled = false;
 
 	const positionChangeHandler = (bannerListElement: HTMLElement) => {
 		const bannerIdOrder = Array.from(bannerListElement.children).map((child) =>
@@ -25,6 +26,7 @@
 	};
 
 	const init = (node: HTMLElement) => {
+		if (disabled) return;
 		const sortable = new Sortable(node, {
 			animation: 150,
 			handle: '.item-handle',
@@ -34,26 +36,38 @@
 	};
 </script>
 
-<div class="flex flex-col gap-1.5" use:init>
+<div
+	class="flex flex-col gap-1.5"
+	use:init
+	on:input={() => {
+		banners = banners;
+	}}
+>
 	{#each banners as banner, bannerIdx (banner.id)}
 		<div
 			class="flex items-start gap-1 rounded-lg border border-gray-100/40 bg-transparent px-2 py-1 transition focus-within:border-blue-400 dark:border-gray-850/50 dark:focus-within:border-blue-500"
 			id="banner-item-{banner.id}"
 		>
-			<Tooltip content={$i18n.t('Reorder')}>
-				<div
-					class="item-handle flex h-6 w-3 shrink-0 cursor-move items-center justify-center text-gray-400 dark:text-gray-600"
-				>
-					<EllipsisVertical className="size-3.5" />
-				</div>
-			</Tooltip>
+			{#if !disabled}
+				<Tooltip content={$i18n.t('Reorder')}>
+					<div
+						class="item-handle flex h-6 w-3 shrink-0 cursor-move items-center justify-center text-gray-400 dark:text-gray-600"
+					>
+						<EllipsisVertical className="size-3.5" />
+					</div>
+				</Tooltip>
+			{/if}
 			<div class="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-start sm:gap-2">
 				<SettingsSelect
 					bind:value={banner.type}
 					required
+					{disabled}
 					ariaLabel={$i18n.t('Type')}
 					className="w-24 max-w-full shrink-0"
 					selectClassName="!h-6 !border-transparent !bg-transparent !ps-1 capitalize dark:!bg-transparent"
+					on:change={() => {
+						banners = banners;
+					}}
 				>
 					<option value="" disabled hidden class="text-gray-900">{$i18n.t('Type')}</option>
 					<option value="info" class="text-gray-900">{$i18n.t('Info')}</option>
@@ -68,6 +82,7 @@
 						bind:value={banner.content}
 						bind:translations={banner.i18n}
 						{locale}
+						{disabled}
 						field="content"
 						multiline
 						rows={1}
@@ -77,23 +92,29 @@
 			<div class="flex h-6 shrink-0 items-center px-1">
 				<Switch
 					bind:state={banner.dismissible}
+					{disabled}
 					ariaLabel={$i18n.t('Remember Dismissal')}
 					tooltip={$i18n.t('Remember Dismissal')}
-				/>
-			</div>
-			<Tooltip content={$i18n.t('Delete')}>
-				<button
-					class="flex size-6 shrink-0 items-center justify-center text-gray-400 opacity-70 transition hover:text-gray-700 hover:opacity-100 dark:text-gray-600 dark:hover:text-gray-300"
-					type="button"
-					aria-label={$i18n.t('Delete')}
-					on:click={() => {
-						banners.splice(bannerIdx, 1);
+					on:change={() => {
 						banners = banners;
 					}}
-				>
-					<XMark className="size-3.5" />
-				</button>
-			</Tooltip>
+				/>
+			</div>
+			{#if !disabled}
+				<Tooltip content={$i18n.t('Delete')}>
+					<button
+						class="flex size-6 shrink-0 items-center justify-center text-gray-400 opacity-70 transition hover:text-gray-700 hover:opacity-100 dark:text-gray-600 dark:hover:text-gray-300"
+						type="button"
+						aria-label={$i18n.t('Delete')}
+						on:click={() => {
+							banners.splice(bannerIdx, 1);
+							banners = banners;
+						}}
+					>
+						<XMark className="size-3.5" />
+					</button>
+				</Tooltip>
+			{/if}
 		</div>
 	{/each}
 </div>

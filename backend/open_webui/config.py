@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 import redis
 import requests
 from authlib.integrations.starlette_client import OAuth
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from open_webui.env import (
     USE_SLIM,
@@ -2166,13 +2166,15 @@ else:
 
 
 class BannerModel(BaseModel):
+    model_config = ConfigDict(extra='allow')
     i18n: dict[str, dict[str, str]] | None = None
     id: str
-    type: str
+    type: str = 'info'
     title: str | None = None
-    content: str
-    dismissible: bool
-    timestamp: int
+    content: str = ''
+    dismissible: bool = True
+    timestamp: int = 0
+    url: str | None = None
 
 
 try:

@@ -4903,6 +4903,7 @@
 						<Navbar
 							bind:this={navbarElement}
 							readOnly={isShared}
+							selectedModels={atSelectedModel?.id ? [atSelectedModel.id] : selectedModels}
 							chat={{
 								id: $chatId,
 								archived: chat?.archived ?? false,
