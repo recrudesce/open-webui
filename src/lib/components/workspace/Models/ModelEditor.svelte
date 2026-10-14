@@ -1699,7 +1699,13 @@
 											</div>
 
 											{#if banners.length > 0}
-												<Banners bind:banners locale={editingLocale} disabled={readOnly} />
+												<div
+													on:change={() => {
+														banners = banners;
+													}}
+												>
+													<Banners bind:banners locale={editingLocale} disabled={readOnly} />
+												</div>
 											{:else}
 												<div class="px-1 py-1 text-xs text-gray-400 dark:text-gray-500">
 													{$i18n.t('No banners configured for this model.')}

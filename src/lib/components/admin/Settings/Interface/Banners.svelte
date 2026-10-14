@@ -36,13 +36,7 @@
 	};
 </script>
 
-<div
-	class="flex flex-col gap-1.5"
-	use:init
-	on:input={() => {
-		banners = banners;
-	}}
->
+<div class="flex flex-col gap-1.5" use:init>
 	{#each banners as banner, bannerIdx (banner.id)}
 		<div
 			class="flex items-start gap-1 rounded-lg border border-gray-100/40 bg-transparent px-2 py-1 transition focus-within:border-blue-400 dark:border-gray-850/50 dark:focus-within:border-blue-500"
@@ -65,9 +59,6 @@
 					ariaLabel={$i18n.t('Type')}
 					className="w-24 max-w-full shrink-0"
 					selectClassName="!h-6 !border-transparent !bg-transparent !ps-1 capitalize dark:!bg-transparent"
-					on:change={() => {
-						banners = banners;
-					}}
 				>
 					<option value="" disabled hidden class="text-gray-900">{$i18n.t('Type')}</option>
 					<option value="info" class="text-gray-900">{$i18n.t('Info')}</option>
@@ -95,9 +86,6 @@
 					{disabled}
 					ariaLabel={$i18n.t('Remember Dismissal')}
 					tooltip={$i18n.t('Remember Dismissal')}
-					on:change={() => {
-						banners = banners;
-					}}
 				/>
 			</div>
 			{#if !disabled}
